@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useHomepageContent, HomepageContent } from "@/hooks/useHomepageContent";
-import { Save, Upload } from "lucide-react";
+import { Save } from "lucide-react";
 
 const HomepageContentManagement = () => {
   const { data: contentData, refetch } = useHomepageContent();
@@ -19,20 +18,24 @@ const HomepageContentManagement = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (contentData) {
-      const hero = contentData.find(item => item.content_type === 'hero_image');
-      const newsletter = contentData.find(item => item.content_type === 'newsletter');
-      
-      if (hero) setHeroContent(hero);
-      if (newsletter) setNewsletterContent(newsletter);
+    if (!contentData) {
+      console.warn("Content data is empty or undefined");
+      return;
     }
+
+    const hero = contentData.find(item => item.content_type === 'hero_image');
+    const newsletter = contentData.find(item => item.content_type === 'newsletter');
+    
+    if (hero) setHeroContent(hero);
+    if (newsletter) setNewsletterContent(newsletter);
   }, [contentData]);
 
   const handleSaveContent = async (type: 'hero_image' | 'newsletter', content: Partial<HomepageContent>) => {
     setLoading(true);
+
     try {
       const existingContent = contentData?.find(item => item.content_type === type);
-      
+
       if (existingContent) {
         const { error } = await supabase
           .from('homepage_content')
@@ -40,7 +43,7 @@ const HomepageContentManagement = () => {
             title: content.title,
             content: content.content,
             image_url: content.image_url,
-            is_active: content.is_active,
+            is_active: content.is_active ?? true,
             updated_at: new Date().toISOString()
           })
           .eq('id', existingContent.id);
@@ -54,7 +57,7 @@ const HomepageContentManagement = () => {
             title: content.title,
             content: content.content,
             image_url: content.image_url,
-            is_active: content.is_active ?? true
+            is_active: content.is_active ?? true,
           });
 
         if (error) throw error;
@@ -62,16 +65,18 @@ const HomepageContentManagement = () => {
 
       await refetch();
       toast({
-        title: "Content Updated",
-        description: `${type === 'hero_image' ? 'Hero' : 'Newsletter'} content has been updated successfully`,
+        title: "Success",
+        description: `${type === 'hero_image' ? 'Hero' : 'Newsletter'} content updated successfully`,
       });
+
     } catch (error) {
-      console.error('Error saving content:', error);
+      console.error('Error updating content:', error);
       toast({
         title: "Error",
-        description: "Failed to update content",
+        description: "Failed to update content. Please try again.",
         variant: "destructive",
       });
+
     } finally {
       setLoading(false);
     }
@@ -81,7 +86,7 @@ const HomepageContentManagement = () => {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Homepage Content Management</h2>
       
-      {/* Hero Section Management */}
+      {/* Hero Section */}
       <Card>
         <CardHeader>
           <CardTitle>Hero Section</CardTitle>
@@ -138,7 +143,7 @@ const HomepageContentManagement = () => {
         </CardContent>
       </Card>
 
-      {/* Newsletter Section Management */}
+      {/* Newsletter Section */}
       <Card>
         <CardHeader>
           <CardTitle>Newsletter Section</CardTitle>
