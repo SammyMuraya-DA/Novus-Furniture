@@ -1,104 +1,76 @@
-
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Product } from "@/data/products";
 import ProductForm from "./ProductForm";
 import ProductTable from "./ProductTable";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Product {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  description: string;
+  inStock: boolean;
+}
 
 const ProductManagement = () => {
-  const [products, setProducts] = useState<Product[]>([]);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
-  const { toast } = useToast();
 
-  useEffect(() => {
-    // Load products from localStorage or use default products
-    const savedProducts = localStorage.getItem("products");
-    if (savedProducts) {
-      setProducts(JSON.parse(savedProducts));
-    } else {
-      // Import default products
-      import("@/data/products").then((module) => {
-        setProducts(module.products);
-        localStorage.setItem("products", JSON.stringify(module.products));
-      });
-    }
-  }, []);
+  // Fetch products from Supabase
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ['products'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('products').select('*');
+      if (error) throw error;
+      return data;
+    },
+  });
 
-  const saveProducts = (updatedProducts: Product[]) => {
-    setProducts(updatedProducts);
-    localStorage.setItem("products", JSON.stringify(updatedProducts));
-    // Trigger custom event to notify other components
-    window.dispatchEvent(new CustomEvent("productsUpdated"));
-  };
+  // Add product mutation
+  const addProductMutation = useMutation({
+    mutationFn: async (productData: Partial<Product>) => {
+      const { error } = await supabase.from('products').insert([productData]);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast({ title: "Product Added", description: "New product added successfully!" });
+      setIsAddingNew(false);
+    },
+  });
 
-  const handleAddProduct = (productData: Partial<Product>) => {
-    const newProduct: Product = {
-      id: Date.now().toString(),
-      name: productData.name || "",
-      category: productData.category || "other",
-      price: productData.price || 0,
-      originalPrice: productData.originalPrice,
-      image: productData.image || "https://images.unsplash.com/photo-1721322800607-8c38375eef04?w=800&h=600&fit=crop",
-      images: [productData.image || "https://images.unsplash.com/photo-1721322800607-8c38375eef04?w=800&h=600&fit=crop"],
-      description: productData.description || "",
-      features: productData.features || [],
-      dimensions: productData.dimensions || "",
-      material: productData.material || "",
-      color: productData.color || "",
-      inStock: productData.inStock !== false,
-    };
+  // Update product mutation
+  const updateProductMutation = useMutation({
+    mutationFn: async (productData: Product) => {
+      const { error } = await supabase.from('products').update(productData).eq('id', productData.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'], queryKey: ['homepage-products'] }); // Refresh both views
+      toast({ title: "Product Updated", description: "Changes reflected on homepage!" });
+      setEditingProduct(null);
+    },
+  });
 
-    const updatedProducts = [...products, newProduct];
-    saveProducts(updatedProducts);
-    setIsAddingNew(false);
-    toast({
-      title: "Product Added",
-      description: "New product has been added successfully",
-    });
-  };
+  // Delete product mutation
+  const deleteProductMutation = useMutation({
+    mutationFn: async (productId: string) => {
+      const { error } = await supabase.from('products').delete().eq('id', productId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'], queryKey: ['homepage-products'] });
+      toast({ title: "Product Deleted", description: "Removed successfully!" });
+    },
+  });
 
-  const handleUpdateProduct = (productData: Partial<Product>) => {
-    if (!editingProduct) return;
-
-    const updatedProducts = products.map(product =>
-      product.id === editingProduct.id
-        ? { ...product, ...productData }
-        : product
-    );
-    saveProducts(updatedProducts);
-    setEditingProduct(null);
-    toast({
-      title: "Product Updated",
-      description: "Product has been updated successfully",
-    });
-  };
-
-  const handleDeleteProduct = (productId: string) => {
-    const updatedProducts = products.filter(product => product.id !== productId);
-    saveProducts(updatedProducts);
-    toast({
-      title: "Product Deleted",
-      description: "Product has been deleted successfully",
-    });
-  };
-
-  const handleCancel = () => {
-    setIsAddingNew(false);
-    setEditingProduct(null);
-  };
-
-  if (isAddingNew || editingProduct) {
-    return (
-      <ProductForm
-        product={editingProduct}
-        onSave={editingProduct ? handleUpdateProduct : handleAddProduct}
-        onCancel={handleCancel}
-      />
-    );
-  }
+  if (isLoading) return <div>Loading products...</div>;
 
   return (
     <div className="space-y-6">
@@ -110,11 +82,11 @@ const ProductManagement = () => {
         </Button>
       </div>
 
-      <ProductTable
-        products={products}
-        onEdit={setEditingProduct}
-        onDelete={handleDeleteProduct}
-      />
+      {isAddingNew || editingProduct ? (
+        <ProductForm product={editingProduct} onSave={editingProduct ? updateProductMutation.mutate : addProductMutation.mutate} onCancel={() => { setIsAddingNew(false); setEditingProduct(null); }} />
+      ) : (
+        <ProductTable products={products} onEdit={setEditingProduct} onDelete={deleteProductMutation.mutate} />
+      )}
     </div>
   );
 };
