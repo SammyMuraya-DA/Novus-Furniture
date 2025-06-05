@@ -1,7 +1,7 @@
-
 import { Button } from "@/components/ui/button";
-import { Phone, Mail, Share2, Truck, Shield } from "lucide-react";
+import { Phone, Mail, Share2, Truck, Shield, ClipboardCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import React from "react";
 
 interface ProductActionsProps {
   productName: string;
@@ -9,21 +9,23 @@ interface ProductActionsProps {
   inStock: boolean;
 }
 
-const ProductActions = ({ productName, productDescription, inStock }: ProductActionsProps) => {
+const ProductActions = React.memo(({ productName, productDescription, inStock }: ProductActionsProps) => {
   const { toast } = useToast();
 
   const handleWhatsAppContact = () => {
+    if (!productName) return;
     const message = `Hi, I'm interested in the ${productName}. Could you provide more information?`;
-    window.open(`https://wa.me/254708921377?text=${encodeURIComponent(message)}`, '_blank');
+    window.open(`https://wa.me/254708921377?text=${encodeURIComponent(message)}`, "_blank");
   };
 
   const handleEmailContact = () => {
+    if (!productName) return;
     const subject = `Inquiry about ${productName}`;
     const body = `Hi,\n\nI'm interested in the ${productName} and would like more information.\n\nThank you!`;
     window.open(`mailto:info@modernspace.co.ke?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     if (navigator.share) {
       navigator.share({
         title: productName,
@@ -31,11 +33,20 @@ const ProductActions = ({ productName, productDescription, inStock }: ProductAct
         url: window.location.href,
       });
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      toast({
-        title: "Link copied!",
-        description: "Product link has been copied to clipboard.",
-      });
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        toast({
+          title: "Link copied!",
+          description: "Product link has been copied to clipboard.",
+          icon: <ClipboardCheck className="h-5 w-5 text-green-600" />,
+        });
+      } catch (error) {
+        toast({
+          title: "Copy failed",
+          description: "Could not copy link. Please try manually.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -47,6 +58,7 @@ const ProductActions = ({ productName, productDescription, inStock }: ProductAct
           className="flex-1 bg-green-600 hover:bg-green-700"
           onClick={handleWhatsAppContact}
           disabled={!inStock}
+          aria-label="Contact via WhatsApp"
         >
           <Phone className="mr-2 h-5 w-5" />
           WhatsApp Inquiry
@@ -55,6 +67,7 @@ const ProductActions = ({ productName, productDescription, inStock }: ProductAct
           size="lg"
           variant="outline"
           onClick={handleEmailContact}
+          aria-label="Contact via Email"
         >
           <Mail className="h-5 w-5" />
         </Button>
@@ -62,6 +75,7 @@ const ProductActions = ({ productName, productDescription, inStock }: ProductAct
           size="lg"
           variant="outline"
           onClick={handleShare}
+          aria-label="Share product"
         >
           <Share2 className="h-5 w-5" />
         </Button>
@@ -86,6 +100,6 @@ const ProductActions = ({ productName, productDescription, inStock }: ProductAct
       </div>
     </div>
   );
-};
+});
 
 export default ProductActions;
