@@ -1,105 +1,172 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Phone, Mail, Share2, Truck, Shield, ClipboardCheck } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import React from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
-interface ProductActionsProps {
-  productName: string;
-  productDescription: string;
+interface Product {
+  id: string;
+  name: string;
+  description: string;
   inStock: boolean;
 }
 
-const ProductActions = React.memo(({ productName, productDescription, inStock }: ProductActionsProps) => {
+const ProductManagement = () => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [newProduct, setNewProduct] = useState({ name: "", description: "", inStock: true });
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
 
-  const handleWhatsAppContact = () => {
-    if (!productName) return;
-    const message = `Hi, I'm interested in the ${productName}. Could you provide more information?`;
-    window.open(`https://wa.me/254708921377?text=${encodeURIComponent(message)}`, "_blank");
-  };
+  // Fetch products from Supabase
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ['admin-products'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('products').select('*');
+      if (error) throw error;
+      return data as Product[];
+    },
+  });
 
-  const handleEmailContact = () => {
-    if (!productName) return;
-    const subject = `Inquiry about ${productName}`;
-    const body = `Hi,\n\nI'm interested in the ${productName} and would like more information.\n\nThank you!`;
-    window.open(`mailto:info@modernspace.co.ke?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
-  };
+  // Add new product
+  const addProductMutation = useMutation({
+    mutationFn: async (productData: Partial<Product>) => {
+      const { error } = await supabase.from('products').insert([productData]);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      toast({ title: "Product Added", description: "New product added successfully!" });
+      setNewProduct({ name: "", description: "", inStock: true }); // Reset form
+    },
+  });
 
-  const handleShare = async () => {
-    if (navigator.share) {
-      navigator.share({
-        title: productName,
-        text: productDescription,
-        url: window.location.href,
-      });
-    } else {
-      try {
-        await navigator.clipboard.writeText(window.location.href);
-        toast({
-          title: "Link copied!",
-          description: "Product link has been copied to clipboard.",
-          icon: <ClipboardCheck className="h-5 w-5 text-green-600" />,
-        });
-      } catch (error) {
-        toast({
-          title: "Copy failed",
-          description: "Could not copy link. Please try manually.",
-          variant: "destructive",
-        });
-      }
-    }
-  };
+  // Update product
+  const updateProductMutation = useMutation({
+    mutationFn: async (productData: Product) => {
+      const { error } = await supabase.from('products').update(productData).eq('id', productData.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      toast({ title: "Product Updated", description: "Product updated successfully!" });
+      setEditProduct(null);
+    },
+  });
+
+  // Delete product
+  const deleteProductMutation = useMutation({
+    mutationFn: async (productId: string) => {
+      const { error } = await supabase.from('products').delete().eq('id', productId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      toast({ title: "Product Removed", description: "Product deleted successfully!" });
+    },
+  });
+
+  if (isLoading) return <div>Loading products...</div>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-3">
-        <Button
-          size="lg"
-          className="flex-1 bg-green-600 hover:bg-green-700"
-          onClick={handleWhatsAppContact}
-          disabled={!inStock}
-          aria-label="Contact via WhatsApp"
-        >
-          <Phone className="mr-2 h-5 w-5" />
-          WhatsApp Inquiry
-        </Button>
-        <Button
-          size="lg"
-          variant="outline"
-          onClick={handleEmailContact}
-          aria-label="Contact via Email"
-        >
-          <Mail className="h-5 w-5" />
-        </Button>
-        <Button
-          size="lg"
-          variant="outline"
-          onClick={handleShare}
-          aria-label="Share product"
-        >
-          <Share2 className="h-5 w-5" />
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Product Management</h2>
 
-      {/* Additional Info */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
-        <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-          <Truck className="h-6 w-6 text-amber-600" />
-          <div>
-            <p className="font-medium text-gray-900">Free Delivery</p>
-            <p className="text-sm text-gray-600">Within Nairobi</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-          <Shield className="h-6 w-6 text-amber-600" />
-          <div>
-            <p className="font-medium text-gray-900">5-Year Warranty</p>
-            <p className="text-sm text-gray-600">Full coverage</p>
-          </div>
-        </div>
-      </div>
+      {/* Add Product Form */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Add a New Product</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              addProductMutation.mutate(newProduct);
+            }}
+            className="space-y-4"
+          >
+            <Input
+              placeholder="Product Name"
+              value={newProduct.name}
+              onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+              required
+            />
+            <Input
+              placeholder="Product Description"
+              value={newProduct.description}
+              onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+              required
+            />
+            <Button type="submit">Add Product</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Products Table */}
+      <Card>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Stock Status</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {products.map((product) => (
+                <TableRow key={product.id}>
+                  <TableCell>{product.name}</TableCell>
+                  <TableCell>{product.description}</TableCell>
+                  <TableCell>{product.inStock ? "In Stock" : "Out of Stock"}</TableCell>
+                  <TableCell className="flex gap-2">
+                    <Button onClick={() => setEditProduct(product)}>Edit</Button>
+                    <Button variant="destructive" onClick={() => deleteProductMutation.mutate(product.id)}>Delete</Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Edit Product Modal */}
+      {editProduct && (
+        <Dialog open={!!editProduct} onOpenChange={() => setEditProduct(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Product</DialogTitle>
+            </DialogHeader>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                updateProductMutation.mutate(editProduct);
+              }}
+              className="space-y-4"
+            >
+              <Input
+                placeholder="Product Name"
+                value={editProduct.name}
+                onChange={(e) => setEditProduct({ ...editProduct, name: e.target.value })}
+                required
+              />
+              <Input
+                placeholder="Product Description"
+                value={editProduct.description}
+                onChange={(e) => setEditProduct({ ...editProduct, description: e.target.value })}
+                required
+              />
+              <Button type="submit">Save Changes</Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
-});
+};
 
-export default ProductActions;
+export default ProductManagement;
